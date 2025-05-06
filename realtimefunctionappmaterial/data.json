@@ -1,0 +1,13 @@
+{
+    "timestamp": "2025-05-05T11:51:40.351657-04:00",
+    "orders": {
+        "tx_hash": "39e49d8f88accf111002fd1e28479a6f8daf4b286c0b55e730f2534a3b086cff",
+        "indegree": 3,
+        "outdegree": 2,
+        "in_btc": 5.75,
+        "out_btc": 3.25,
+        "total_btc": 2.5,
+        "mean_in_btc": 1.9166666666666667,
+        "mean_out_btc": 1.625
+    }
+}
