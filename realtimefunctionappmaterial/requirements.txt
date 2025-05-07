@@ -8,3 +8,4 @@ azure-eventhub
 azure-identity
 pytz
 openai==0.28
+numpy
