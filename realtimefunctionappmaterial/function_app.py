@@ -7,6 +7,7 @@ import requests
 from azure.eventhub import EventHubProducerClient, EventData
 import azure.functions as func
 import openai
+import numpy as np
 
 app = func.FunctionApp()
 
@@ -20,7 +21,12 @@ eventhub_name = "team14eventhub"
 openai.api_key = os.getenv("OPEN_AI_API_KEY")
 openai.organization = os.getenv("OPENAI_ORG_ID")
 
-
+coef_const = -4.0168
+coef_indegree = 0.0896
+coef_outdegree = 0.0859
+coef_in_btc = 0.0132
+coef_out_btc = 0.1708
+coef_total_btc = -0.0922
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -34,10 +40,10 @@ def generate_transaction_data():
     indegree: Number of transactions that are inputs of tx_hash
     outdegree: Number of transactions that are outputs of tx_hash.
     in_btc: Total number of bitcoins on each incoming edge to tx_hash.
-    out_btc: Total number of bitcoins on each outgoing edge from tx_hash.
-    total_btc: Net number of bitcoins flowing in and out from tx_hash.
-    mean_in_btc: Average number of bitcoins flowing in for tx_hash.
-    mean_out_btc: Average number of bitcoins flowing out for tx_hash.
+    out_btc: Total number of bitcoins on each outgoing edge from tx_hash. in _btc >= out_btc
+    total_btc: in_btc + out_btc.
+    mean_in_btc (type double): in_btc / indegree.
+    mean_out_btc (type double): out_btc / outdegree.
 
     Respond only with a JSON object.
     """
@@ -69,6 +75,30 @@ def send_to_eventhub(data):
     except Exception as e:
         logging.error(f"Error sending data to Event Hub: {e}")
         raise
+def predict_using_coefficients(transaction_data):
+    try:
+        # Extracting features from the generated data
+        indegree = transaction_data['indegree']
+        outdegree = transaction_data['outdegree']
+        in_btc = transaction_data['in_btc']
+        out_btc = transaction_data['out_btc']
+        total_btc = transaction_data['total_btc']
+        # Compute log-odds (z)
+        z = (coef_const + 
+             coef_indegree * indegree + 
+             coef_outdegree * outdegree + 
+             coef_in_btc * in_btc + 
+             coef_out_btc * out_btc + 
+             coef_total_btc * total_btc)
+
+        # Apply sigmoid function to get the probability
+        probability = 1 / (1 + np.exp(-z))  # Sigmoid function
+        
+        # Predict the class (1 for malicious, 0 for non-malicious)
+        prediction = 1 if probability >= 0.5 else 0
+        return prediction
+    except Exception as e:
+        logging.error(f"Error during prediction: {e}")
 
 @app.timer_trigger(schedule="0 * * * * *", arg_name="mytimer", run_on_startup=True, use_monitor=True)
 def main(mytimer: func.TimerRequest) -> None:
@@ -82,9 +112,11 @@ def main(mytimer: func.TimerRequest) -> None:
 
         order_data = generate_transaction_data()
         if order_data:
+            prediction = predict_using_coefficients(order_data)
             data = {
                 "timestamp": est_time,
-                "orders": order_data
+                "orders": order_data,
+                "prediction": prediction
             }
             logging.info(f"Data to be sent to Event Hub: {data}")
             send_to_eventhub(data)
